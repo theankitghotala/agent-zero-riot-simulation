@@ -45,7 +45,7 @@ This simulation brings *Agent_Zero* to life using **NetLogo**, focusing on **civ
 
 ### Steps
 1. Clone or download this repository
-2. Open `riot-simulation.nlogo` in NetLogo
+2. Open `Riots.nlogo` in NetLogo
 3. Set parameters or pick a **mode** from the interface
 4. Click `Setup`, then `Go`
 

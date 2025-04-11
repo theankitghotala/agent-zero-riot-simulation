@@ -42,16 +42,8 @@ patches-own [
 to setup
   clear-all
 
-  ; set globals
-;  set k 1.5
-;  set threshold 0.25
-;  set alpha 0.3
-;  set beta 0.5
-;  set gamma 0.3
-
-
   setup-patches
-  set-environment selected-environment ; 🌟 This is new
+  set-environment selected-environment
   setup-citizens
   setup-cops
 
@@ -444,7 +436,7 @@ fear-decay-rate
 fear-decay-rate
 0
 100
-100.0
+0.0
 1
 1
 NIL
@@ -493,7 +485,7 @@ max-jail-term
 max-jail-term
 0
 50
-20.0
+21.0
 1
 1
 turns
@@ -526,7 +518,7 @@ initial-cop-density
 initial-cop-density
 0.0
 100
-10.0
+25.0
 1
 1
 %
@@ -541,7 +533,7 @@ initial-agent-density
 initial-agent-density
 0
 100
-71.0
+43.0
 1
 1
 %
@@ -619,9 +611,9 @@ SLIDER
 government-legitimacy
 government-legitimacy
 0
-0.5
-0.4
-0.1
+1
+0.69
+0.01
 1
 NIL
 HORIZONTAL
@@ -698,7 +690,7 @@ CHOOSER
 selected-environment
 selected-environment
 "stable" "tense" "revolt" "all zero"
-3
+1
 
 BUTTON
 13
@@ -744,7 +736,7 @@ SWITCH
 330
 show-fear-overlay?
 show-fear-overlay?
-1
+0
 1
 -1000
 
@@ -764,41 +756,140 @@ NIL
 HORIZONTAL
 
 @#$#@#$#@
-## WHAT IS IT?
+# 📘 INFO: Agent_Zero Riot Simulation
 
-(a general understanding of what the model is trying to show or explain)
+## 📌 WHAT IS IT?
 
-## HOW IT WORKS
+This is a simulation of urban riots and civil unrest, inspired by **Joshua Epstein’s Agent_Zero framework**, implemented in a Sugarscape-style world. It models how **fear**, **grievance**, and **perceived legitimacy** interact to trigger or suppress protest behavior in agents.
 
-(what rules the agents use to create the overall behavior of the model)
+Each agent (citizen) chooses whether to remain passive or become active (protest) based on:
 
-## HOW TO USE IT
+- **Cognitive components** (hardship, legitimacy)
+- **Emotional responses** (fear dynamics)
+- **Social influence** (peer pressure, legitimacy erosion)
 
-(how to use the model, including a description of each of the items in the Interface tab)
+The model also includes:
+- Arrest-capable **cops**
+- Localized **fear contagion**
+- **Grievance feedback loops**
+- Toggleable **behavioral modes** for experimentation
 
-## THINGS TO NOTICE
+## 🔬 WHAT IS THE GOAL?
 
-(suggested things for the user to notice while running the model)
+- Explore the dynamics of **collective action**
+- Observe **tipping points** and protest waves
+- Study the influence of **fear**, **trust**, and **legitimacy**
+- Analyze how **authority behavior**, **social contagion**, and **cop strategies** alter civil outcomes
 
-## THINGS TO TRY
+## ⚙️ HOW IT WORKS
 
-(suggested things for the user to try to do (move sliders, switches, etc.) with the model)
+At every time step (tick), agents:
+1. Calculate **grievance** as a function of personal hardship and legitimacy.
+2. Estimate **fear** based on nearby cops, arrest probability, and fear contagion.
+3. Compute **net risk** by comparing grievance with fear.
+4. Decide whether to **protest** based on a threshold comparison.
+5. Face **arrest** if caught by a nearby cop.
 
-## EXTENDING THE MODEL
+Cops:
+- Patrol randomly
+- Scan for active protesters within their vision
+- Arrest and jail them for a fixed duration
 
-(suggested things to add or change in the Code tab to make the model more complicated, detailed, accurate, etc.)
+An optional **fear heatmap** visualizes the emotional tension across the grid.
 
-## NETLOGO FEATURES
+The `mode` selector toggles between:
+- `Epstein` (grievance-only)
+- `Agent_Zero` (grievance + fear + legitimacy)
+- `Extended` (adds social pressure & legitimacy erosion)
 
-(interesting or unusual features of NetLogo that the model uses, particularly in the Code tab; or where workarounds were needed for missing features)
+## 📐 FORMULAS & THEORETICAL MODEL
 
-## RELATED MODELS
+### 1. Grievance Calculation:
+```
+grievance = hardship * (1 - legitimacy)
+```
 
-(models in the NetLogo Models Library and elsewhere which are of related interest)
+- `hardship`: Fixed individual attribute
+- `legitimacy`: Dynamic trust in authority
 
-## CREDITS AND REFERENCES
+### 2. Fear Calculation:
+```
+fear = k * arrest-prob * (1 + α * fear-nearby)
+```
 
-(a reference to the model's URL on the web if it has one, as well as any other necessary credits, citations, and links)
+- `k`: Sensitivity to fear
+- `arrest-prob`: Probability of arrest from local cop presence
+- `fear-nearby`: Mean fear of neighboring agents (fear contagion)
+- `α (alpha)`: Weight of social fear
+
+### 3. Net Risk Evaluation:
+```
+net-risk = grievance - fear
+```
+
+- Protest if `net-risk > threshold`
+
+### 4. Legitimacy Dynamics (in Extended mode):
+```
+legitimacy = legitimacy - γ * protest-density-nearby
+```
+
+- `γ (gamma)`: Sensitivity to legitimacy erosion from protest
+- Protest near agents reduce perceived legitimacy
+
+### 5. Social Pressure:
+```
+grievance += β * (active-neighbors / total-neighbors)
+```
+
+- `β (beta)`: Weight of social pressure to protest
+
+## 🧠 AGENT VARIABLES
+
+- `active?`: Whether the agent is protesting
+- `grievance`: Individual sense of injustice
+- `fear`: Emotional inhibition
+- `hardship`: Economic struggle (fixed)
+- `legitimacy`: Trust in the regime (dynamic in extended mode)
+- `social-pressure`: Peer-driven grievance boost
+- `arrest-prob`: Risk of getting arrested
+- `fear-nearby`: Average fear among neighbors
+
+## 🎛️ INTERFACE CONTROLS
+
+- `setup`: Initializes the world
+- `go`: Starts or continues the simulation
+- `show-fear-overlay?`: Toggle fear heatmap
+- `mode`: Choose between Epstein, Agent_Zero, or Extended model
+- Switches for values of :
+  - `alpha` (fear contagion)
+  - `beta` (peer pressure)
+  - `gamma` (legitimacy erosion)
+  - `k` (fear scale)
+- Controls for:
+  - Number of agents & cops
+  - Vision radius
+  - Jail duration
+  - Initial legitimacy
+
+## 🧪 EXPERIMENTATION IDEAS
+
+- Raise `cop-vision` to simulate authoritarian crackdown.
+- Set `beta` high to simulate tight social networks.
+- Make `gamma` high and watch legitimacy collapse from protest spirals.
+- Reduce `k` to simulate agents with no fear—observe revolution.
+
+## 📚 REFERENCES
+
+- Epstein, J. M. (2014). *Agent_Zero: Toward Neurocognitive Foundations for Generative Social Science*.
+- Epstein, J. M., & Axtell, R. (1996). *Growing Artificial Societies*.
+
+
+## 💡 CREDITS
+
+Made by [Ankit Mishra](https://github.com/theankitghotala)  
+Crafted with curiosity, chaos, and caffeine ☕⚡  
+Modeling the mathematics of mobs and minds.
 @#$#@#$#@
 default
 true

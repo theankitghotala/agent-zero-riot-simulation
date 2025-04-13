@@ -1,88 +1,78 @@
-breed [ citizens citizen ]
-breed [ cops cop ]
-
-
+breed [ citizens citizen ] ; agents who may protest, influenced by fear and legitimacy
+breed [ cops cop ]         ; authority figures who patrol and arrest
 
 globals [
-  k                   ; factor for determining arrest probability
-  threshold           ; by how much must G > N to make someone rebel?
+  k                   ; arrest probability scaling constant
+  ;threshold           ; rebellion activation threshold (grievance must exceed this)
 
-  alpha
-  beta
-  gamma
-
-  ;selected-environment  ; current regime mode: "stable", "tense", or "revolt"
-
-
+  alpha               ; weight of perceived threat on fear
+  beta                ; weight of fear decay
+  gamma               ; weight of social fear influence
 ]
 
 citizens-own [
-  risk-aversion       ; R, fixed for the agent's lifetime, ranging from 0-1 (inclusive)
-  perceived-hardship  ; H, also ranging from 0-1 (inclusive)
-  active?           ; protesting or not
-  jail-term         ; ticks left in jail
-  legitimacy        ; cognitive belief about regime legitimacy (0 to 1)
+  risk-aversion       ; fixed individual trait: fear of risk (0–1)
+  perceived-hardship  ; perceived suffering (0–1)
+  active?             ; whether agent is currently protesting
+  jail-term           ; countdown of jail time (in ticks)
+  legitimacy          ; belief in regime's legitimacy (0–1)
 
-  fear-level                ;; Affective state (neurocognitive fear)
-  aggression
-  social-fear               ;; Fear spread from neighbors
-  last-threat-intensity     ;; Stores last perceived threat level
+  fear-level          ; total affective fear (includes social & cognitive components)
+  aggression          ; [not used in this script, possibly for future]
+  social-fear         ; peer-induced fear from surrounding agents
+  last-threat-intensity ; memory of last perceived threat (used in lingering fear)
 
+  threshold           ; rebellion activation threshold (grievance must exceed this)
 ]
 
-cops-own [    ; how far the cop can arrest
-]
+cops-own [ ] ; Placeholder: can add vision or other attributes later
 
 patches-own [
-  neighborhood        ; surrounding patches within the vision radius
-  avg-fear-nearby
-
+  neighborhood        ; cached patch neighbors within vision range
+  avg-fear-nearby     ; average fear of citizens on this patch (for visualization)
 ]
+
 
 to setup
   clear-all
-
   setup-patches
-  set-environment selected-environment
+  set-environment selected-environment ; choose environment: stable, tense, etc.
   setup-citizens
   setup-cops
 
+  ; Ensure total density doesn’t exceed 100%
   if initial-cop-density + initial-agent-density > 100 [
-    user-message (word
-      "The sum of INITIAL-COP-DENSITY and INITIAL-AGENT-DENSITY "
-      "should not be greater than 100.")
+    user-message "Initial densities exceed 100%!"
     stop
   ]
-
 
   reset-ticks
 end
 
 
+
 to setup-patches
   ask patches [
-    ; make background a slightly dark gray
-    set pcolor gray - 1
-    ; cache patch neighborhoods
-    set neighborhood patches in-radius vision
-    set avg-fear-nearby 0
+    set pcolor gray - 1 ; neutral background
+    set neighborhood patches in-radius vision ; precompute neighbors
+    set avg-fear-nearby 0 ; initialize fear display
   ]
-
 end
+
 
 to setup-citizens
   create-citizens round (initial-agent-density * .01 * count patches) [
     move-to one-of patches with [ not any? turtles-here ]
-    set heading 0
+    set heading random 360
     set risk-aversion random-float 1.0
-;    set perceived-hardship random-float 1.0
-    set perceived-hardship 0.9
+    set perceived-hardship random-float 1.0
+    ;set perceived-hardship 0.9
     set active? false
     set jail-term 0
     set color green
     set legitimacy random-float 1
     set fear-level 0
-    ;set threshold 1.5 ;; sum of 3 modules must exceed this
+    set threshold 0.1 ;; sum of 3 modules must exceed this
     display-citizen
   ]
 end
@@ -95,14 +85,16 @@ to setup-cops
 end
 
 to go
+  ; Core agent rules
   ask turtles [
     ; Rule M: Move to a random site within your vision
     if (breed = citizens and jail-term = 0) or breed = cops [ move ]
-    ;   Rule A: Determine if each agent should be active or quiet
+    ; Rule A: Determine if each agent should be active or quiet
     if breed = citizens and jail-term = 0 [ determine-behavior ]
-    ;  Rule C: Cops arrest a random active agent within their radius
+    ; Rule C: Cops arrest a random active agent within their radius
     if breed = cops [ enforce ]
   ]
+  ; Emotion & cognition updates
   ask citizens [
     update-fear
     update-fear-with-social-influence
@@ -110,19 +102,17 @@ to go
     reinforce-grievance-socially
     display-citizen
     if jail-term > 0 [ set jail-term jail-term - 1 ]
-;    if jail-term = 0 [ set fear-level 0 ]
   ]
 
-
+  ; Visualization layer (overlay)
   if show-fear-overlay? [
   ask patches [
     let nearby-citizens citizens-on neighbors
     if any? nearby-citizens [
       set avg-fear-nearby mean [fear-level] of nearby-citizens
     ]
-    set pcolor (red - avg-fear-nearby * 0.001)
+    set pcolor (grey - 1 - avg-fear-nearby * 0.001)
   ]
-
 ]
 ;
 if not show-fear-overlay? [
@@ -138,35 +128,41 @@ if not show-fear-overlay? [
 ;  show (word "arrest-prob: " estimated-arrest-probability)
 ;  show (word "threshold: " threshold)
 ;]
-  ask cops [ display-cop ]
 
+  ask cops [ display-cop ]
+  update-government-legitimacy
   tick
 end
 
 ; CITIZEN AND COP BEHAVIOR
 
-to move ; turtle procedure
+to move
   if movement? or breed = cops [
-    ; move to a patch in vision; candidate patches are
-    ; empty or contain only jailed agents
     let targets neighborhood with [
-;      not any? cops-here and any? citizens-here with [ jail-term > 0 ]
-     not any? cops-here and all? citizens-here [ jail-term > 0 ]
+      not any? cops-here and all? citizens-here [ jail-term > 0 ]
     ]
     if any? targets [ move-to one-of targets ]
   ]
 end
 
 
+
 ; CITIZEN BEHAVIOR
 
 to determine-behavior
-  set active? (grievance - risk-aversion * estimated-arrest-probability > threshold)
+  ;set active? (grievance - risk-aversion * estimated-arrest-probability > threshold)
+  let cognitive (1 - legitimacy)
+  let emotional (-1 * fear-level)
+;  let social perceived-hardship * (1 - government-legitimacy)
+  let social grievance
+  let total-activation cognitive + emotional + social
+  set active? (total-activation > threshold)
+
 end
 
 to-report grievance
-  report perceived-hardship * (1 - government-legitimacy)
-  ;report perceived-hardship * (1 - legitimacy)
+;  report perceived-hardship * (1 - government-legitimacy)
+  report perceived-hardship * (1 - legitimacy)
 end
 
 
@@ -175,6 +171,99 @@ to-report estimated-arrest-probability
   let a 1 + count (citizens-on neighborhood) with [ active? ]
   report 1 - exp (- k * floor (c / a))
 end
+
+
+to reinforce-grievance-socially
+  let protesting-neighbors citizens in-radius 3 with [active? and jail-term = 0]
+  let num-protesters count protesting-neighbors
+  let total-neighbors count citizens in-radius 3 with [jail-term = 0]
+
+  if total-neighbors > 0 [
+    let social-pressure num-protesters / total-neighbors
+
+    ;; Lower legitimacy if surrounded by many protesters (social contagion)
+    set legitimacy max (list 0 (legitimacy - social-pressure * 0.01))
+
+    ;; Optional: Slight hardship reinforcement
+    set perceived-hardship min (list 1 (perceived-hardship + 0.01 * social-pressure))
+  ]
+end
+
+to update-government-legitimacy
+  let num-protesters count citizens with [active? and jail-term = 0]
+;  let num-arrests count citizens with [jail-term > 0]
+  let unrest ( num-protesters )
+  ;let unrest (num-protesters + num-arrests)
+  set government-legitimacy max (list 0 (government-legitimacy + unrest * 0.00001))
+end
+
+to update-legitimacy
+  let nearby-protests count citizens in-radius 2 with [active? and jail-term = 0]
+  let nearby-arrests count citizens in-radius 2 with [jail-term > 0]
+
+  ;; Agents lose faith when they see active unrest or jailed rebels
+  let erosion (nearby-protests * 0.01 + nearby-arrests * 0.02)
+  set legitimacy max (list 0 (legitimacy - erosion))
+
+  ;; Optional: let legitimacy slowly regenerate over time
+  if nearby-protests = 0 and nearby-arrests = 0 [
+    set legitimacy min (list 1 (legitimacy + 0.005))
+  ]
+end
+
+to update-fear-with-social-influence
+  let highly-fearful-neighbors citizens in-radius 3 with [ jail-term = 0 and fear-level > 20 ]  ;; only free agents and in highly fear
+  let total count citizens in-radius 3 with [ jail-term = 0 ]
+
+  if total > 0 [
+    let c count citizens in-radius 3 with [ jail-term = 0 and fear-level > 50 ]
+    let peer-pressure c / total
+    set perceived-hardship min (list 1 (perceived-hardship + peer-pressure * 0.1))
+  ]
+
+
+  if any? highly-fearful-neighbors [
+    let avg-neighbor-fear mean [fear-level] of citizens in-radius 5 with [ jail-term = 0 and fear-level > 20 ]
+    set social-fear gamma * avg-neighbor-fear
+    set fear-level fear-level + social-fear
+  ]
+end
+
+to update-fear
+  let threat-intensity perceived-threat
+  set last-threat-intensity threat-intensity
+  let nearby-cops count cops in-radius 2
+
+  ;; If fear was high recently, decay it slowly (hysteresis effect)
+  if fear-level > 0 and fear-level < 50 [
+    ;; Slow decay (hysteresis)
+    set fear-level min (list 0 (fear-level + (alpha * threat-intensity) - ((beta * fear-decay-rate ) * (nearby-cops * 0.1)) ))
+  ]
+  if fear-level >= 50 and fear-level < 100 [
+    ;; Normal decay
+    set fear-level min (list 0 (fear-level + (alpha * threat-intensity) - ((beta * fear-decay-rate) * (nearby-cops * 0.25)) ))
+  ]
+  if fear-level >= 100 [
+    ;; Normal decay
+    set fear-level min (list 0 (fear-level + (alpha * threat-intensity) - ((beta * fear-decay-rate) * (nearby-cops * 0.5)) ))
+  ]
+
+end
+
+to-report perceived-threat
+  let nearby-protesting-citizens count citizens with [ jail-term = 0 and active? ] in-radius 2
+  ;let resource-scarcity 1 - ((psugar + pspice) / (max-resource + 0.1))  ;; Normalized scarcity (Epstein-style)
+  ;let resource-scarcity 1
+  ;print ( resource-scarcity )
+
+  ;; Memory-augmented perception: Fear lingers from past exposure
+  let lingering-fear 0.1 * last-threat-intensity
+
+  ;; Epstein-style perceived threat calculation
+  ;report (nearby-enemies * 1.5 + resource-scarcity * 2) + lingering-fear
+  report (nearby-protesting-citizens * 0.1 + fear-level * 2) + lingering-fear
+end
+
 
 ; COP BEHAVIOR
 
@@ -197,52 +286,7 @@ to enforce
   ]
 end
 
-to update-fear-with-social-influence
-  let highly-fearful-neighbors citizens in-radius 3 with [ jail-term = 0 and fear-level > 0.5 ]  ;; only free agents and in highly fear
 
-  let total count citizens in-radius 3 with [ jail-term = 0 ]
-  if total > 0 [
-    let c count citizens in-radius 3 with [ jail-term = 0 and fear-level > 0.5 ]
-    let peer-pressure c / total
-    set perceived-hardship min (list 1 (perceived-hardship + peer-pressure * 0.1))  ;; adjust as needed
-  ]
-
-
-  if any? highly-fearful-neighbors [  ;; Check if there are any neighbors
-    let avg-neighbor-fear mean [fear-level] of citizens in-radius 3 with [ jail-term = 0 and fear-level > 0.5 ]
-
-    set social-fear gamma * avg-neighbor-fear
-    set fear-level fear-level + social-fear  ;; Fear spreads socially
-  ]
-end
-
-to update-fear
-  let threat-intensity perceived-threat
-  set last-threat-intensity threat-intensity
-  let nearby-cops count cops in-radius 2
-
-  ;; If fear was high recently, decay it slowly (hysteresis effect)
-  ifelse fear-level > 0.5  and fear-level < 100[
-    set fear-level max (list 0 (fear-level + (alpha * threat-intensity) - ( (beta * fear-decay-rate / 2) * (nearby-cops * 10) ) ) )
-  ]
-  [
-    set fear-level min (list 0 (fear-level + (alpha * threat-intensity) - ((beta * fear-decay-rate) * (nearby-cops * 10) ) ) )
-  ]
-end
-
-to-report perceived-threat
-  let nearby-protesting-citizens count citizens with [ jail-term = 0 and active? ] in-radius 2
-  ;let resource-scarcity 1 - ((psugar + pspice) / (max-resource + 0.1))  ;; Normalized scarcity (Epstein-style)
-  ;let resource-scarcity 1
-  ;print ( resource-scarcity )
-
-  ;; Memory-augmented perception: Fear lingers from past exposure
-  let lingering-fear 0.1 * last-threat-intensity
-
-  ;; Epstein-style perceived threat calculation
-  ;report (nearby-enemies * 1.5 + resource-scarcity * 2) + lingering-fear
-  report (nearby-protesting-citizens * 0.1 + fear-level * 2) + lingering-fear
-end
 
 
 ;to update-cognition
@@ -274,35 +318,7 @@ end
 ;end
 
 
-to update-legitimacy
-  let nearby-protests count citizens in-radius 2 with [active? and jail-term = 0]
-  let nearby-arrests count citizens in-radius 2 with [jail-term > 0]
-
-  ;; Agents lose faith when they see active unrest or jailed rebels
-  let erosion (nearby-protests * 0.01 + nearby-arrests * 0.02)
-  set legitimacy max (list 0 (legitimacy - erosion))
-
-  ;; Optional: let legitimacy slowly regenerate over time
-  if nearby-protests = 0 and nearby-arrests = 0 [
-    set legitimacy min (list 1 (legitimacy + 0.005))
-  ]
-end
-
-to reinforce-grievance-socially
-  let protesting-neighbors citizens in-radius 3 with [active? and jail-term = 0]
-  let num-protesters count protesting-neighbors
-  let total-neighbors count citizens in-radius 3 with [jail-term = 0]
-
-  if total-neighbors > 0 [
-    let social-pressure num-protesters / total-neighbors
-
-    ;; Lower legitimacy if surrounded by many protesters (social contagion)
-    set legitimacy max (list 0 (legitimacy - social-pressure * 0.01))
-
-    ;; Optional: Slight hardship reinforcement
-    set perceived-hardship min (list 1 (perceived-hardship + 0.01 * social-pressure))
-  ]
-end
+; VISUALIZATION OF CITIZENS AND COPS AND UI
 
 to set-environment [ mode ]
   set selected-environment mode
@@ -312,7 +328,7 @@ to set-environment [ mode ]
     set beta 0.6
     set gamma 0.1
     set k 1.5
-    set threshold 0.5
+    ;set threshold 0.5
 
     ask citizens [
       set risk-aversion random-float 1.0
@@ -326,7 +342,7 @@ to set-environment [ mode ]
     set beta 0.5
     set gamma 0.3
     set k 1.5
-    set threshold 0.25
+    ;set threshold 0.25
 
     ask citizens [
       set risk-aversion random-float 0.8
@@ -340,7 +356,7 @@ to set-environment [ mode ]
     set beta 0.3
     set gamma 0.4
     set k 1.2
-    set threshold 0.15
+    ;et threshold 0.15
 
     ask citizens [
       set risk-aversion random-float 0.6
@@ -353,7 +369,7 @@ to set-environment [ mode ]
     set beta 0
     set gamma 0
     set k 1.2
-    set threshold 0.4
+    ;set threshold 0.4
 
     ask citizens [
       set risk-aversion random-float 0.6
@@ -365,7 +381,6 @@ end
 
 
 
-; VISUALIZATION OF CITIZENS AND COPS
 
 to display-citizen  ; agent procedure
   ifelse visualization = "3D"
@@ -436,7 +451,7 @@ fear-decay-rate
 fear-decay-rate
 0
 100
-0.0
+10.0
 1
 1
 NIL
@@ -485,7 +500,7 @@ max-jail-term
 max-jail-term
 0
 50
-21.0
+24.0
 1
 1
 turns
@@ -518,7 +533,7 @@ initial-cop-density
 initial-cop-density
 0.0
 100
-25.0
+7.0
 1
 1
 %
@@ -533,7 +548,7 @@ initial-agent-density
 initial-agent-density
 0
 100
-43.0
+84.0
 1
 1
 %
@@ -612,7 +627,7 @@ government-legitimacy
 government-legitimacy
 0
 1
-0.69
+1.6378900000000003
 0.01
 1
 NIL
@@ -690,7 +705,7 @@ CHOOSER
 selected-environment
 selected-environment
 "stable" "tense" "revolt" "all zero"
-1
+3
 
 BUTTON
 13

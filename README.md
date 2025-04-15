@@ -87,7 +87,6 @@ Pull requests are welcome! Got an idea for a new emotion model? A better visuali
 ## 🌐 Connect
 
 - 💡 Want to collaborate? Drop a message!
-- 🌌 Made by a student & dreamer of complex systems and cognitive models.
 
 <p align="center">
   <img src="images/simulation-banner.png" width="600" alt="Banner"/>
